@@ -167,8 +167,6 @@ class CTMWA(BaseModel):
         cost_v = F.cross_entropy(output_v, label.long(), reduction='none')
         cost_v = torch.reshape(cost_v, (len(cost_v), 1))
         
-        # cost_w_t = torch.cat((cost_m,cost_t),-1)
-        # cost_w_v = torch.cat((cost_m,cost_v),-1)
         cost_w_t = torch.cat((torch.nn.functional.one_hot(label.long(),num_classes=self.opt.output_dim),output_m,output_t,fusion_t),-1)
         cost_w_v = torch.cat((torch.nn.functional.one_hot(label.long(),num_classes=self.opt.output_dim),output_m,output_v,fusion_v),-1)
 
@@ -195,8 +193,6 @@ class CTMWA(BaseModel):
         
         query_losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
         query_losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
-
-        # if epoch < self.opt.niter:
 
         query_losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
         query_losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti

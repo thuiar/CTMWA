@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .tools import Linear_fw, Conv2d_fw, Conv1d_fw
+from .tools import Linear_fw, Conv2d_fw
 
 class ScaledDotProductAttention(nn.Module):
     '''
@@ -73,23 +73,4 @@ class seqEncoder(nn.Module):
         hidden = F.relu(self.conv(x).squeeze(3)).transpose(1,2)
         attn_hidden = self.self_attn(hidden, hidden, hidden, attention_mask=mask)
         attn_hidden = torch.squeeze(attn_hidden, dim=1)
-        return attn_hidden
-
-class transEncoder(nn.Module):
-    def __init__(self, seq_len, dst_len,input_dim, embd_size=128, in_channels=1, kernel_heights=5, dropout=0.0) -> None:
-        super().__init__()
-        self.seq_len = seq_len
-        self.conv = Conv2d_fw(in_channels, embd_size, (kernel_heights, input_dim), padding=((kernel_heights-1)//2, 0))
-        self.self_attn = ScaledDotProductAttention(d_model=embd_size, d_k=embd_size, d_v=embd_size, h=2, dropout=dropout)
-        self.align = Conv1d_fw(seq_len, dst_len, 1, stride=1, padding=0, bias = False)
-
-    def forward(self, x, mask=None):
-        ''' x: modality sequences. [batch_size, seq_len, embd_size]'''
-        if self.seq_len == 1:
-            x = torch.unsqueeze(x, dim=1)
-        b, l, d = x.size()
-        x = x.view(b, 1, l, d)
-        hidden = F.relu(self.conv(x).squeeze(3)).transpose(1,2)
-        attn_hidden = self.self_attn(hidden, hidden, hidden, attention_mask=mask)
-        attn_hidden = self.align(attn_hidden)
         return attn_hidden
