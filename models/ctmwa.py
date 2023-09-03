@@ -58,7 +58,7 @@ class CTMWA(BaseModel):
         parser.add_argument('--niter', type=int, default=12, help='# of iter at starting learning rate')
         parser.add_argument('--niter_decay', type=int, default=12, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of adam')
-        parser.add_argument('--num_heads', type=int, default=3, help='# of iter at starting learning rate')
+        parser.add_argument('--num_heads', type=int, default=2, help='# of iter at starting learning rate')
 
         parser.add_argument('--trans_tit', type=float, default=1.0, help='initial learning rate for adam')
         parser.add_argument('--trans_iti', type=float, default=0.05, help='initial learning rate for adam')
@@ -95,8 +95,8 @@ class CTMWA(BaseModel):
         self.txt_w_net = WUnit(in_dim = opt.output_dim*3+opt.input_dim_t+opt.input_dim_v, mid_dim = 128, out_dim = 1)
         self.img_w_net = WUnit(in_dim = opt.output_dim*3+opt.input_dim_t+opt.input_dim_v, mid_dim = 128, out_dim = 1)
 
-        self.img2txt = seqEncoder(opt.input_dim_v, opt.input_dim_t, dropout=opt.dropout_rate)
-        self.txt2img = seqEncoder(opt.input_dim_t, opt.input_dim_v, dropout=opt.dropout_rate)
+        self.img2txt = seqEncoder(opt.input_dim_v, opt.input_dim_t, head = opt.num_heads,dropout=opt.dropout_rate)
+        self.txt2img = seqEncoder(opt.input_dim_t, opt.input_dim_v, head = opt.num_heads,dropout=opt.dropout_rate)
 
         self.txt_neck = BlockUnit(in_dim = opt.input_dim_v + opt.input_dim_t, mid_dim = int((opt.input_dim_t+opt.input_dim_v+opt.embd_size)/2), out_dim = opt.embd_size)
         self.img_neck = BlockUnit(in_dim = opt.input_dim_v + opt.input_dim_t, mid_dim = int((opt.input_dim_t+opt.input_dim_v+opt.embd_size)/2), out_dim = opt.embd_size)

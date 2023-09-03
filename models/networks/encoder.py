@@ -59,11 +59,11 @@ class ScaledDotProductAttention(nn.Module):
         return out
 
 class seqEncoder(nn.Module):
-    def __init__(self, input_dim, embd_size=128, in_channels=1, kernel_heights=5, dropout=0.0) -> None:
+    def __init__(self, input_dim, embd_size=128, head=2, in_channels=1, kernel_heights=5, dropout=0.0) -> None:
         super().__init__()
 
         self.conv = Conv2d_fw(in_channels, embd_size, (kernel_heights, input_dim), padding=((kernel_heights-1)//2, 0))
-        self.self_attn = ScaledDotProductAttention(d_model=embd_size, d_k=embd_size, d_v=embd_size, h=2, dropout=dropout)
+        self.self_attn = ScaledDotProductAttention(d_model=embd_size, d_k=embd_size, d_v=embd_size, h=head, dropout=dropout)
 
     def forward(self, x, mask=None):
         ''' x: modality sequences. [batch_size, embd_size]'''
