@@ -190,29 +190,29 @@ class Ctmwa(BaseModel):
         del grad
 
     def inner_query_train(self, epoch):
-        output_m, output_t, output_v, text,image, txt_img_txt, img_txt_img, img_txt, txt_img, fusion_t, fusion_v = self.forward(self.text, self.image)
+        output_m, output_t, output_v, text,image, txt_img_txt, img_txt_img, img_txt, txt_img, _, _ = self.forward(self.text, self.image)
         
-        query_losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
-        query_losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
+        # query_losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
+        # query_losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
 
         # if epoch < self.opt.niter:
 
-        query_losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
-        query_losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
+        # query_losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
+        # query_losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
 
         m_meta = F.cross_entropy(output_m, self.label.long())
         t_meta = F.cross_entropy(output_t, self.t_label.long())
         v_meta = F.cross_entropy(output_v, self.v_label.long())
-        query_losses += m_meta + t_meta + v_meta
+        query_losses = m_meta + t_meta + v_meta
 
         self.wnet_zero_grad()
         query_losses.backward()
         self.wnet_optimizer.step()
     
-    def inner_train(self, tr_loader, vl_loader, logger, epoch):
+    def inner_train(self, tr_loader, meta_loader, logger, epoch):
         tr_losses = 0
         preds, labels = [], []
-        support_meta_loader_iter = iter(vl_loader)
+        meta_loader_iter = iter(meta_loader)
         epoch_start_time = time.time()
         for batch_data in tqdm(tr_loader):
             self.net_reset()
@@ -220,12 +220,12 @@ class Ctmwa(BaseModel):
             self.inner_support_train(batch_data, epoch)
 
             try:
-                support_batch = next(support_meta_loader_iter)
+                meta_batch = next(meta_loader_iter)
             except StopIteration:
-                support_meta_loader_iter = iter(vl_loader)
-                support_batch = next(support_meta_loader_iter)
+                meta_loader_iter = iter(meta_loader)
+                meta_batch = next(meta_loader_iter)
 
-            self.set_input(support_batch)
+            self.set_input(meta_batch)
             self.inner_query_train(epoch)
 
             self.set_input(batch_data)
