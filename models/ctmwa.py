@@ -8,8 +8,10 @@ from .tools import Linear_fw
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
 from models.networks import seqEncoder
+from transformers import BertModel
 import numpy as np
 import time
+from torch import exp
 
 class BlockUnit(nn.Module):
     def __init__(self, in_dim, mid_dim, out_dim) -> None:
@@ -36,7 +38,7 @@ class WUnit(nn.Module):
         out = self.linear2(x)
         return torch.sigmoid(out)
     
-class CTMWA(BaseModel):
+class Ctmwa(BaseModel):
     @staticmethod
     def modify_commandline_options(parser, is_train=True):
         # Model Parameters
@@ -50,15 +52,13 @@ class CTMWA(BaseModel):
         parser.add_argument('--output_dim', type=int, default=7, help='output classification. linear classification')
         parser.add_argument('--dropout_rate', type=float, default=0.3, help='rate of dropout')
         
-        # Meta Parameters.
-        parser.add_argument('--approx', type=bool, default=False, help='whether to use first order approximation')
         # Training Parameters.
         parser.add_argument('--batch_size', type=int, default=32, help='input batch size')
         
         parser.add_argument('--niter', type=int, default=12, help='# of iter at starting learning rate')
         parser.add_argument('--niter_decay', type=int, default=12, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of adam')
-        parser.add_argument('--num_heads', type=int, default=2, help='# of iter at starting learning rate')
+        parser.add_argument('--num_heads', type=int, default=3, help='# of iter at starting learning rate')
 
         parser.add_argument('--trans_tit', type=float, default=1.0, help='initial learning rate for adam')
         parser.add_argument('--trans_iti', type=float, default=0.05, help='initial learning rate for adam')
@@ -68,7 +68,6 @@ class CTMWA(BaseModel):
         parser.add_argument('--lr', type=float, default=0.0005, help='initial learning rate for adam')
         parser.add_argument('--inner_lr', type=float, default=0.005, help='initial learning rate for adam')
         parser.add_argument('--wnet_lr', type=float, default=0.0005, help='initial learning rate for adam')
-
         
         parser.add_argument('--lr_policy', type=str, default='linear', help='learning rate policy. [linear | step | plateau | cosine]')
         parser.add_argument('--weight_decay', type=float, default=2e-4, help='weight decay when training')
@@ -95,8 +94,8 @@ class CTMWA(BaseModel):
         self.txt_w_net = WUnit(in_dim = opt.output_dim*3+opt.input_dim_t+opt.input_dim_v, mid_dim = 128, out_dim = 1)
         self.img_w_net = WUnit(in_dim = opt.output_dim*3+opt.input_dim_t+opt.input_dim_v, mid_dim = 128, out_dim = 1)
 
-        self.img2txt = seqEncoder(opt.input_dim_v, opt.input_dim_t, head = opt.num_heads,dropout=opt.dropout_rate)
-        self.txt2img = seqEncoder(opt.input_dim_t, opt.input_dim_v, head = opt.num_heads,dropout=opt.dropout_rate)
+        self.img2txt = seqEncoder(opt.input_dim_v, opt.input_dim_t, dropout=opt.dropout_rate)
+        self.txt2img = seqEncoder(opt.input_dim_t, opt.input_dim_v, dropout=opt.dropout_rate)
 
         self.txt_neck = BlockUnit(in_dim = opt.input_dim_v + opt.input_dim_t, mid_dim = int((opt.input_dim_t+opt.input_dim_v+opt.embd_size)/2), out_dim = opt.embd_size)
         self.img_neck = BlockUnit(in_dim = opt.input_dim_v + opt.input_dim_t, mid_dim = int((opt.input_dim_t+opt.input_dim_v+opt.embd_size)/2), out_dim = opt.embd_size)
@@ -167,6 +166,8 @@ class CTMWA(BaseModel):
         cost_v = F.cross_entropy(output_v, label.long(), reduction='none')
         cost_v = torch.reshape(cost_v, (len(cost_v), 1))
         
+        # cost_w_t = torch.cat((cost_m,cost_t),-1)
+        # cost_w_v = torch.cat((cost_m,cost_v),-1)
         cost_w_t = torch.cat((torch.nn.functional.one_hot(label.long(),num_classes=self.opt.output_dim),output_m,output_t,fusion_t),-1)
         cost_w_v = torch.cat((torch.nn.functional.one_hot(label.long(),num_classes=self.opt.output_dim),output_m,output_v,fusion_v),-1)
 
@@ -194,12 +195,14 @@ class CTMWA(BaseModel):
         query_losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
         query_losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
 
+        # if epoch < self.opt.niter:
+
         query_losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
         query_losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
 
         m_meta = F.cross_entropy(output_m, self.label.long())
-        t_meta = F.cross_entropy(output_t, self.label.long())
-        v_meta = F.cross_entropy(output_v, self.label.long())
+        t_meta = F.cross_entropy(output_t, self.t_label.long())
+        v_meta = F.cross_entropy(output_v, self.v_label.long())
         query_losses += m_meta + t_meta + v_meta
 
         self.wnet_zero_grad()
@@ -213,26 +216,26 @@ class CTMWA(BaseModel):
         epoch_start_time = time.time()
         for batch_data in tqdm(tr_loader):
             self.net_reset()
-            for i in range(1):
-                try:
-                    support_batch = next(support_meta_loader_iter)
-                except StopIteration:
-                    support_meta_loader_iter = iter(vl_loader)
-                    support_batch = next(support_meta_loader_iter)
 
-                self.inner_support_train(support_batch, epoch)
+            self.inner_support_train(batch_data, epoch)
 
-            self.set_input(batch_data)
+            try:
+                support_batch = next(support_meta_loader_iter)
+            except StopIteration:
+                support_meta_loader_iter = iter(vl_loader)
+                support_batch = next(support_meta_loader_iter)
 
+            self.set_input(support_batch)
             self.inner_query_train(epoch)
 
+            self.set_input(batch_data)
             self.net_reset()
-
             output_m, output_t, output_v, text, image, txt_img_txt, img_txt_img, img_txt, txt_img, fusion_t, fusion_v = self.forward(self.text, self.image)
             
             losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
             losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
 
+            # if epoch < self.opt.niter:
             losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
             losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
 
@@ -245,6 +248,8 @@ class CTMWA(BaseModel):
             cost_v = F.cross_entropy(output_v, self.label.long(), reduction='none')
             cost_v = torch.reshape(cost_v, (len(cost_v), 1))
 
+            # cost_w_t = torch.cat((cost_m,cost_t),-1)
+            # cost_w_v = torch.cat((cost_m,cost_v),-1)
             cost_w_t = torch.cat((torch.nn.functional.one_hot(self.label.long(),num_classes=self.opt.output_dim),output_m,output_t,fusion_t),-1)
             cost_w_v = torch.cat((torch.nn.functional.one_hot(self.label.long(),num_classes=self.opt.output_dim),output_m,output_v,fusion_v),-1)
 
@@ -302,7 +307,8 @@ class CTMWA(BaseModel):
         accuracy = accuracy_score(labels.flatten(), preds.flatten())
         f1 = f1_score(labels.flatten(), preds.flatten(), average='weighted')
         logger.info(f'{type} Loss: {ts_losses} \t Acc: {accuracy} \t F1: {f1}')
-        return accuracy, f1
+
+        return accuracy, f1, ids, labels, preds
 
     def net_reset(self):
         self.fast_parameters = self.get_inner_loop_params()
@@ -348,6 +354,9 @@ class CTMWA(BaseModel):
         self.text = input['text'].float().to(self.device)
         self.image = input['image'].float().to(self.device)
         self.label = input['label'].type(torch.int64).to(self.device)
+        if 't_label' in input:
+            self.t_label = input['t_label'].type(torch.int64).to(self.device)
+            self.v_label = input['v_label'].type(torch.int64).to(self.device)
 
     def optimize_parameters(self):
         self.forward()
