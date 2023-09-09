@@ -111,9 +111,8 @@ class Ctmwa(BaseModel):
 
         if self.isTrain:
             self.criterion_ce = opt.criterion_clsloss
-            self.criterion_mae = nn.L1Loss()
+            self.criterion_l1 = nn.L1Loss()
 
-            # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.wnet_paremeter = [{'params': getattr(self, net).parameters()} for net in self.wnet_models]
             self.wnet_optimizer = torch.optim.Adam(self.wnet_paremeter, lr=opt.wnet_lr, betas=(opt.beta1, 0.999), weight_decay=opt.weight_decay)
             self.optimizers.append(self.wnet_optimizer)
@@ -150,12 +149,11 @@ class Ctmwa(BaseModel):
 
         output_m, output_t, output_v, text, image, txt_img_txt, img_txt_img, img_txt, txt_img, fusion_t, fusion_v = self.forward(text, image)
 
-        supprot_losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
-        supprot_losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
+        supprot_losses = self.criterion_l1(text, txt_img_txt) * self.opt.trans_tit
+        supprot_losses += self.criterion_l1(image, img_txt_img) * self.opt.trans_iti
 
-        # if epoch < self.opt.niter:
-        supprot_losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
-        supprot_losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
+        supprot_losses += self.criterion_l1(text, img_txt) * self.opt.trans_it
+        supprot_losses += self.criterion_l1(image, txt_img) * self.opt.trans_ti
 
         cost_m = F.cross_entropy(output_m, label.long(), reduction='none')
         cost_m = torch.reshape(cost_m, (len(cost_m), 1))
@@ -166,8 +164,6 @@ class Ctmwa(BaseModel):
         cost_v = F.cross_entropy(output_v, label.long(), reduction='none')
         cost_v = torch.reshape(cost_v, (len(cost_v), 1))
         
-        # cost_w_t = torch.cat((cost_m,cost_t),-1)
-        # cost_w_v = torch.cat((cost_m,cost_v),-1)
         cost_w_t = torch.cat((torch.nn.functional.one_hot(label.long(),num_classes=self.opt.output_dim),output_m,output_t,fusion_t),-1)
         cost_w_v = torch.cat((torch.nn.functional.one_hot(label.long(),num_classes=self.opt.output_dim),output_m,output_v,fusion_v),-1)
 
@@ -190,15 +186,7 @@ class Ctmwa(BaseModel):
         del grad
 
     def inner_query_train(self, epoch):
-        output_m, output_t, output_v, text,image, txt_img_txt, img_txt_img, img_txt, txt_img, _, _ = self.forward(self.text, self.image)
-        
-        # query_losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
-        # query_losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
-
-        # if epoch < self.opt.niter:
-
-        # query_losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
-        # query_losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
+        output_m, output_t, output_v, _,_, _, _, _, _, _, _ = self.forward(self.text, self.image)
 
         m_meta = F.cross_entropy(output_m, self.label.long())
         t_meta = F.cross_entropy(output_t, self.t_label.long())
@@ -216,9 +204,7 @@ class Ctmwa(BaseModel):
         epoch_start_time = time.time()
         for batch_data in tqdm(tr_loader):
             self.net_reset()
-
             self.inner_support_train(batch_data, epoch)
-
             try:
                 meta_batch = next(meta_loader_iter)
             except StopIteration:
@@ -232,12 +218,11 @@ class Ctmwa(BaseModel):
             self.net_reset()
             output_m, output_t, output_v, text, image, txt_img_txt, img_txt_img, img_txt, txt_img, fusion_t, fusion_v = self.forward(self.text, self.image)
             
-            losses = self.criterion_mae(text, txt_img_txt) * self.opt.trans_tit
-            losses += self.criterion_mae(image, img_txt_img) * self.opt.trans_iti
+            losses = self.criterion_l1(text, txt_img_txt) * self.opt.trans_tit
+            losses += self.criterion_l1(image, img_txt_img) * self.opt.trans_iti
 
-            # if epoch < self.opt.niter:
-            losses += self.criterion_mae(text, img_txt) * self.opt.trans_it
-            losses += self.criterion_mae(image, txt_img) * self.opt.trans_ti
+            losses += self.criterion_l1(text, img_txt) * self.opt.trans_it
+            losses += self.criterion_l1(image, txt_img) * self.opt.trans_ti
 
             cost_m = F.cross_entropy(output_m, self.label.long(), reduction='none')
             cost_m = torch.reshape(cost_m, (len(cost_m), 1))
@@ -248,8 +233,6 @@ class Ctmwa(BaseModel):
             cost_v = F.cross_entropy(output_v, self.label.long(), reduction='none')
             cost_v = torch.reshape(cost_v, (len(cost_v), 1))
 
-            # cost_w_t = torch.cat((cost_m,cost_t),-1)
-            # cost_w_v = torch.cat((cost_m,cost_v),-1)
             cost_w_t = torch.cat((torch.nn.functional.one_hot(self.label.long(),num_classes=self.opt.output_dim),output_m,output_t,fusion_t),-1)
             cost_w_v = torch.cat((torch.nn.functional.one_hot(self.label.long(),num_classes=self.opt.output_dim),output_m,output_v,fusion_v),-1)
 
