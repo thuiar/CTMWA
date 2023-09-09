@@ -8,6 +8,6 @@
 
 2. Using the following script to run our codes.
    2.1 Performing TumEmo Data. 
-    ```python 
+   ```python 
    bash train_tum_emo.sh
    ```
