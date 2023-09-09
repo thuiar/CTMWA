@@ -11,7 +11,3 @@
     ```python 
    bash train_tum_emo.sh
    ```
-   2.2 Performing MVSA-Multiple Data. 
-    ```python 
-   bash train_mvsa_mul.sh
-   ```
